@@ -147,6 +147,64 @@ local run_dap_test_from_test_name = function(test_name, json, settings)
     end
 end
 
+
+local run_test_from_test_name = function(test_name, json, settings)
+    if json ~= nil then
+        local discovered_tests = json.tests
+        local config = nil
+
+        for _, test in ipairs(discovered_tests) do
+            local command = test.command
+            if command ~= nil then
+                if test_name == test.name then
+                    local properties = test.properties
+                    local program_path = table.remove(command, 1)
+
+                    local processed_commands = {}
+                    for _, arg in ipairs(command) do
+                        local processed_arg = string.gsub(arg, "%*", "\\*")
+                        table.insert(processed_commands, processed_arg)
+                    end
+
+                    config = {
+                        program = program_path,
+                        args = processed_commands,
+                    }
+                    break
+                end
+            end
+        end
+
+        if config == nil then
+            error("Couldn't find test to run")
+        else
+            local gwidth = vim.api.nvim_list_uis()[1].width
+            local gheight = vim.api.nvim_list_uis()[1].height
+            local width = math.floor(gwidth * 0.8)
+            local height = math.floor(gheight * 0.8)
+            -- Create a new terminal buffer first
+            local buf = vim.api.nvim_create_buf(false, true)
+            vim.api.nvim_buf_set_option(buf, "bufhidden", "hide")
+            vim.api.nvim_buf_set_option(buf, "swapfile", false)
+            vim.api.nvim_buf_set_option(buf, "buflisted", false)
+            vim.api.nvim_buf_set_keymap(buf, "n", "q", ":q<CR>", { noremap = true, silent = true })
+            vim.api.nvim_buf_set_keymap(buf, "n", "<CR>", ":q<CR>", { noremap = true, silent = true })
+
+            -- Create a floating window
+            local win = vim.api.nvim_open_win(buf, true, {
+                relative = "editor",
+                width = width,
+                height = height,
+                row = (gheight - height) * 0.4,
+                col = (gwidth - width) * 0.5,
+                border = "rounded",
+                style = "minimal",
+            })
+            vim.fn.termopen(config.program .. " " .. table.concat(config.args, " "))
+        end
+    end
+end
+
 ---A global instance of the Ctest app
 ---@type ctest.app
 local app
@@ -185,6 +243,14 @@ function App:pick_test_and_debug(opts)
     if json ~= nil then
         local test_list = get_test_list_from_json(json)
         telescope_select_test_from_list(opts, test_list, json, self.settings, run_dap_test_from_test_name)
+    end
+end
+
+function App:pick_test_and_run(opts)
+    local json = get_ctest_json(self.settings)
+    if json ~= nil then
+        local test_list = get_test_list_from_json(json)
+        telescope_select_test_from_list(opts, test_list, json, self.settings, run_test_from_test_name)
     end
 end
 
